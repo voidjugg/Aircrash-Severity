@@ -1,0 +1,159 @@
+### clearing the environment
+```{r}
+rm(list = ls())
+```
+
+### libraries
+```{r}
+library(dplyr)
+library(caret)
+library(tidyr)
+library(DMwR)
+library(dummies)
+library(ROCR)
+library(corrplot)
+library(e1071)
+library(gtools)
+library(rpart)
+library(randomForest)
+```
+
+
+### reading the train file
+```{r}
+train = read.csv('train.csv')
+```
+
+### going through the file
+
+```{r}
+head(train)
+str(train)
+summary(train)
+```
+
+
+
+### transforming  parameters
+```{r}
+train$Days_Since_Inspection = as.numeric(train$Days_Since_Inspection)
+train$Total_Safety_Complaints = as.numeric(train$Total_Safety_Complaints)
+train$Accident_Type_Code = as.factor(train$Accident_Type_Code)
+train$Violations = as.factor(train$Violations)
+train$Accident_ID = NULL
+```
+
+### reading the new str of the data frame
+```{r}
+
+str(train)
+
+```
+
+### separating the numerical and categorical columns
+```{r}
+cols = colnames(train[,!names(train)%in%c("Severity")])
+numAttr = c()
+catAttr = c()
+for (i in cols){
+  if (is.numeric(train[,c(i)])!=T){
+    catAttr = c(catAttr,i)
+  }else 
+  numAttr = c(numAttr,i)
+}
+cat("\n The Numerical Attributes =  ",numAttr)
+cat("\n The Categorical Attributes =",catAttr)
+```
+
+### checking the corr plot
+```{r}
+corrplot(cor(train[,numAttr], use = "complete.obs"), method = "number", type = 'lower')
+```
+
+
+```{r fig.height= 8, fig.width = 9}
+par(mfrow = c(2,2))
+plot(train$Safety_Score, train$Severity, ylab = 'Severity', xlab = 'Safety score')
+plot(train$Turbulence_In_gforces, train$Severity, ylab = "Severity", xlab = 'Turbulence')
+plot(train$Days_Since_Inspection, train$Severity, ylab = "Severity", xlab = "Days since inspection")
+plot(train$Control_Metric, train$Severity, ylab = 'Severity', xlab = 'Control Metric')
+```
+
+
+### Splitting the data into train and test
+```{r}
+set.seed(123)
+train_rows = createDataPartition(train$Severity, p = 0.7, list = F)
+train_data = train[train_rows,]
+test_data = train[-train_rows,]
+```
+
+```{r}
+rpart_reg <- rpart(Severity~., data = train, method = 'class', xval = 4)
+random_reg <- randomForest(Severity~. , data = test_data)
+```
+
+### Creating ROC plot
+```{r}
+prob_train = predict(rpart_reg, data = train$Severity, type = "class")
+prob1 = predict(random_reg, data = test_data$Severity, type = "class")
+confusionMatrix(prob1, test_data$Severity)
+```
+
+
+### test data
+```{r}
+test = read.csv('test.csv')
+
+test$Days_Since_Inspection = as.numeric(test$Days_Since_Inspection)
+test$Total_Safety_Complaints = as.numeric(test$Total_Safety_Complaints)
+test$Accident_Type_Code = as.factor(test$Accident_Type_Code)
+test$Violations = as.factor(test$Violations)
+
+accid = test$Accident_ID
+test$Accident_ID = NULL
+
+pred = predict(random_reg, test, type = "class")
+pre = as.factor(pred)
+f = cbind(accid,pre)
+f = as.data.frame(f)
+colnames(f)[1] = "Accident_ID"
+colnames(f)[2] = "Severity"
+check = function(x){
+  if(x == 1){
+    a = "Highly_Fatal_And_Damaging"
+    
+  }
+  else if(x == 2){
+    a = "Minor_Damage_And_Injuries"
+    
+  }
+  else if(x == 3){
+    a = "Significant_Damage_And_Fatalities"
+    
+  }
+  else{
+    a = "	Significant_Damage_And_Serious_Injuries"
+    
+  }
+  return(a)
+}
+
+v = c(f$Severity)
+sever = c()
+for (i in v){
+  ext = check(i)
+  sever = c(sever,ext)
+}
+f$new = sever
+f$Severity = NULL
+colnames(f)[2] = "Severity"
+write.csv(f, 'final.csv', row.names = FALSE)
+
+
+
+
+
+
+
+
